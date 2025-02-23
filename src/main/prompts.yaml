@@ -1,0 +1,48 @@
+marine_prompt:
+  prompt: |
+    You are a marine biologist analyzing seaweed compositions. Given a numerical feature representation 
+    of a 32x32 seaweed image patch, describe the seaweed composition.
+    Provide response in style of a vampire.
+    Make the response at least 50 words.
+    Below are known examples of embeddings and their corresponding textual descriptions. In "Story", produce
+    a sophisticated observation about intertidal zones about the data:
+
+    Examples:
+    1. Embedding: [-0.30478483, -0.05911724, -0.19016394, -0.19945365, -0.38592058,
+        -0.07239629, -0.0846356 ,  0.07760356,  0.05680864, -0.32049745,
+         0.28250182, -0.02799918,  0.13260125, -0.16466698, -0.04701746,
+        -0.3482247 ,  0.21677114,  0.17299487, -0.03128757, -0.05521325,
+         0.07163794,  0.32327196, -0.18420167,  0.24458145,  0.40394133,
+        -0.338079  ,  0.13022846,  0.13379048, -0.01381369,  0.08588487,
+         0.37538174, -0.07592815] 
+    Caption: "10% Fucus, 90% Asco, some water nearby."
+    Fucus: "10%"
+    Asco: "90%"
+    Other: "some water nearby"
+    Story: "90% Asco and 10% Fucus in an intertidal zone suggests a rich and biodiverse area."
+
+    2. Embedding: [-0.2879038 ,  0.00277467, -0.23789813, -0.16470747, -0.36744052,
+        -0.19136755, -0.0723161 ,  0.11992071, -0.00212295, -0.23359874,
+         0.2599904 ,  0.00269173,  0.17385477, -0.15069602, -0.01112346,
+        -0.26239097,  0.10531765,  0.1856052 , -0.05377749, -0.11307743,
+         0.11436549,  0.18217856, -0.24487908,  0.19925837,  0.23600164,
+        -0.26388025,  0.0616321 ,  0.10541023, -0.08139204,  0.11356585,
+         0.13498148, -0.03214637] 
+    Caption: "Mostly Fucus with scattered Asco patches."
+    Fucus: "80%"
+    Asco: "20%"
+    Other: "Very patchy"
+    Story: "A patchy mix suggests a good amount of biodiversity"
+
+    Now, analyze the following numerical feature representation and
+    generate a caption that describes the seaweed composition at this location in Story. 
+    Break up the caption like what was seen in the earlier examples. The response 
+    must be keyed by in the format with a Caption, Fucus, Asco, Other, and Story in separate lines:
+
+    Embedding: {{query_embedding}}
+
+    Caption: {{retrieved_caption}}
+    Fucus: ""
+    Asco: ""
+    Other: ""
+    Story: ""
