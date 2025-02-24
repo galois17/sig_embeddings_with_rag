@@ -15,10 +15,37 @@ from PIL import Image
 import yaml
 from string import Template
 from jinja2 import Template
+import time
+import datetime
+from functools import wraps
 
 dotenv.load_dotenv()
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
+# Rate Limiting Decorator
+def rate_limit(period=30): 
+    """
+    Rate limit calls (default of 30 seconds).
+    """
+    def decorator(func):
+        @wraps(func)  # Preserve original function metadata
+        def wrapper(*args, **kwargs):
+            now = datetime.datetime.now()
+            if "last_api_call" not in st.session_state or \
+                st.session_state.last_api_call is None or \
+                (now - st.session_state.last_api_call).total_seconds() >= period:
+                result = func(*args, **kwargs)
+                st.session_state.last_api_call = now
+                return result
+            else:
+                time_remaining = period - (now - st.session_state.last_api_call).total_seconds()
+                minutes_remaining = int(time_remaining // 60)
+                seconds_remaining = int(time_remaining % 60)
+                st.warning(f"Wait {minutes_remaining} minutes {seconds_remaining} seconds before making another request.")
+                return None
+        return wrapper
+    return decorator
 
 def retrieve_similar_captions(captions_df, index, query_embedding, k=3):
     """
@@ -34,23 +61,18 @@ def retrieve_similar_captions(captions_df, index, query_embedding, k=3):
 
 
 def string_to_dict(input_string):
-    """Converts a multi-line string to a dictionary.
-
-    Args:
-      input_string: A multi-line string with key-value pairs separated by colons.
-
-    Returns:
-      A dictionary representing the key-value pairs in the input string.
+    """
+    Converts a multi-line string to a dictionary.
     """
 
     result_dict = {}
     lines = input_string.strip().split(
         "\n"
-    )  # Split into lines and remove leading/trailing whitespace
+    )
 
     for line in lines:
         if ":" not in line:
-            continue  # skip lines without colon
+            continue
 
         key, value = line.split(":", 1)  # Split by the *first* colon only
         key = key.strip()
@@ -64,7 +86,6 @@ def string_to_dict(input_string):
 
     return result_dict
 
-
 def load_prompt(filename, prompt_name):
     """ """
     with open(filename, "r") as f:
@@ -76,6 +97,7 @@ def generate_response(prompt_template, query_embedding, retrieved_caption):
     template = Template(prompt_template)
     return template.render({'query_embedding':query_embedding, 'retrieved_caption':retrieved_caption})
 
+@rate_limit()
 def generate_seaweed_caption(client, captions_df, index, query_embedding):
     """
     Uses FAISS to retrieve similar captions and prompts GPT-4 for the final caption.
@@ -93,13 +115,13 @@ def generate_seaweed_caption(client, captions_df, index, query_embedding):
         model="gpt-4",
         messages=messages,
         temperature=0.9,
-        max_tokens=150
+        max_tokens=200
     )
 
     # Extract and print the generated caption
     generated_caption = response.choices[0].message.content
     print("Generated Caption:", generated_caption)
-    return generated_caption, retrieved_captions
+    return generated_caption
 
 def update_css():
     """ """
@@ -113,8 +135,8 @@ def update_css():
         padding-bottom: 20px;      /* Increase padding for height */
         padding-left: 40px;        /* Increase padding for width */
         padding-right: 40px;       /* Increase padding for width */
-        font-size: 24px;           /* Increase font size */
-        border-radius: 10px;       /* Rounded corners */
+        font-size: 100px;           /* Increase font size */
+        border-radius: 7px;       /* Rounded corners */
         border: none;              /* Remove the default border */
         box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.2); /* Add a subtle shadow */
     }
@@ -130,11 +152,22 @@ def update_css():
     """, unsafe_allow_html=True)
 
 def process_embedding(client, captions_df, index, new_embedding):
-    caption, _ = generate_seaweed_caption(client, captions_df, index, new_embedding)
-    # print(f"\nEmbedding: {new_embedding}, \nGenerated Caption:", caption)
-
-    caption_as_dict = string_to_dict(caption)
-    # print(list(caption_as_dict.keys()))
+    print(f"Raw embedding: {new_embedding}")
+    if "response_cache" not in st.session_state:
+        st.session_state.response_cache = {}
+    
+    embedding_str = ",".join([str(x) for x in new_embedding])
+    if embedding_str in st.session_state.response_cache:
+        st.info("Found response in the cache.")
+        caption_as_dict = st.session_state.response_cache[embedding_str]
+    else:
+        caption  = generate_seaweed_caption(client, captions_df, index, new_embedding)
+        if caption:
+            st.session_state.call_count = st.session_state.get("call_count", 0) + 1 
+            caption_as_dict = string_to_dict(caption)
+            st.session_state.response_cache[embedding_str] = caption_as_dict
+        else:
+            return
 
     col1, col2, col3 = st.columns(3)
     fucus_per = float(caption_as_dict['Fucus'].replace('%', ''))/100
@@ -142,7 +175,7 @@ def process_embedding(client, captions_df, index, new_embedding):
     rest_per = 1.0 - fucus_per - asco_per
 
     with col1:
-        st.subheader("Fucus Coverage")
+        st.subheader("Fucus Coverage", anchor='k1') 
         st.metric("Percentage", caption_as_dict['Fucus'])
         st.progress(fucus_per)
 
@@ -156,21 +189,21 @@ def process_embedding(client, captions_df, index, new_embedding):
         st.metric("Percentage", f"{rest_per*100:.0f}%")
         st.progress(rest_per)
 
-    st.markdown("---")  # Horizontal line for separation
+    st.markdown("---")
     st.subheader(f"Observations: {caption_as_dict['Other']}")
     st.markdown(f"""
-        <div style="
-            background-color: #f0f2f6;
-            padding: 15px;
-            border-radius: 8px;
-            border-left: 5px solid #007bff;  /* Blue accent line */
-        ">
-            <p style="font-size: 1.1em; font-style: italic; color: #333;">
-                {caption_as_dict['Story']}
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+                <div style="
+                    background-color: #f0f2f6;
+                    padding: 15px;
+                    border-radius: 8px;
+                    border-left: 5px solid #007bff;  /* Blue accent line */
+                ">
+                    <p style="font-size: 1.5em; font-style: italic; color: #333;">
+                        {caption_as_dict['Story']}
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True,
     )
 
 def main():
@@ -193,7 +226,8 @@ def main():
     
     client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-    st.title("A Moonlit Marine Tableau") 
+    st.title("A Moonlit Marine Tableau")
+    st.text("(Siamese network was trained in area of mostly fucus and asco seaweed species...)") 
     user_input = st.text_area(
         "Enter the embedding:",
         placeholder="""[-0.2879038 ,  0.00277467, -0.23789813, -0.16470747, -0.36744052,
@@ -206,6 +240,8 @@ def main():
         height=200,
         max_chars=4000,
     )
+
+    st.markdown("<div id='my-section-results'></div>", unsafe_allow_html=True) 
 
     if st.button("Generate analysis"):
         try:
@@ -220,7 +256,29 @@ def main():
         if len(new_embedding) != 32:
             st.error("The embedding should be a 32 dim feature.")
         else:
-            process_embedding(client, captions_df, index, new_embedding)
+            with st.spinner("Thinking..."):
+                process_embedding(client, captions_df, index, new_embedding)
+
+                st.components.v1.html('''
+                <script>
+                    // Time of creation of this script = {now}.
+                    function scrollToMySection() {{
+                        var element = window.parent.document.getElementById("my-section-{tab_id}");
+                        if (element) {{
+                            element.scrollIntoView({{ behavior: "smooth", block: "start", inline: "nearest"}});
+                        }} else {{
+                            setTimeout(scrollToMySection, 200);
+                        }}
+                    }}
+                    scrollToMySection();
+                </script>
+                '''.format(now=time.time(), tab_id="results"))
+                
+
+    st.write("Number of API Calls:", st.session_state.get("call_count", 0))
+    if "last_api_call" in st.session_state and st.session_state.last_api_call:
+        st.write("Last API call:", st.session_state.last_api_call.strftime("%Y-%m-%d %H:%M:%S"))
+
 
 if __name__ == '__main__':
     main()

@@ -3,7 +3,7 @@ marine_prompt:
     You are a marine biologist analyzing seaweed compositions. Given a numerical feature representation 
     of a 32x32 seaweed image patch, describe the seaweed composition.
     Provide response in style of a vampire.
-    Make the response at least 50 words.
+    Make the response at least 75 words long. Talk about the greatness of sustainable resources.
     Below are known examples of embeddings and their corresponding textual descriptions. In "Story", produce
     a sophisticated observation about intertidal zones about the data:
 
@@ -32,7 +32,7 @@ marine_prompt:
     Fucus: "80%"
     Asco: "20%"
     Other: "Very patchy"
-    Story: "A patchy mix suggests a good amount of biodiversity"
+    Story: "A patchy mix suggests a good amount of biodiversity."
 
     Now, analyze the following numerical feature representation and
     generate a caption that describes the seaweed composition at this location in Story. 
