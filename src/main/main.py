@@ -129,18 +129,68 @@ def update_css():
     </style>
     """, unsafe_allow_html=True)
 
+def process_embedding(client, captions_df, index, new_embedding):
+    caption, _ = generate_seaweed_caption(client, captions_df, index, new_embedding)
+    # print(f"\nEmbedding: {new_embedding}, \nGenerated Caption:", caption)
+
+    caption_as_dict = string_to_dict(caption)
+    # print(list(caption_as_dict.keys()))
+
+    col1, col2, col3 = st.columns(3)
+    fucus_per = float(caption_as_dict['Fucus'].replace('%', ''))/100
+    asco_per = float(caption_as_dict['Asco'].replace('%', ''))/100
+    rest_per = 1.0 - fucus_per - asco_per
+
+    with col1:
+        st.subheader("Fucus Coverage")
+        st.metric("Percentage", caption_as_dict['Fucus'])
+        st.progress(fucus_per)
+
+    with col2:
+        st.subheader("Asco Coverage")
+        st.metric("Percentage", caption_as_dict['Asco'])
+        st.progress(asco_per)
+    
+    with col3:
+        st.subheader("Remaining Coverage")
+        st.metric("Percentage", f"{rest_per*100:.0f}%")
+        st.progress(rest_per)
+
+    st.markdown("---")  # Horizontal line for separation
+    st.subheader(f"Observations: {caption_as_dict['Other']}")
+    st.markdown(f"""
+        <div style="
+            background-color: #f0f2f6;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 5px solid #007bff;  /* Blue accent line */
+        ">
+            <p style="font-size: 1.1em; font-style: italic; color: #333;">
+                {caption_as_dict['Story']}
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 def main():
     st.set_page_config(page_title="Marine Landscape", layout="wide")  # Set a wider layout
-
     update_css()
 
     # Load the saved FAISS index
     config = toml.load("config.toml")
     input_file_path = config["input_file"]
+    if not os.path.exists(input_file_path):
+        raise ValueError("Supply a FAISS index file path in config.toml")
+
     index = faiss.read_index(input_file_path)
 
-    captions_df = pd.read_csv(config["captions"])
-
+    captions_df_path = config["captions"]
+    if not os.path.exists(captions_df_path):
+        raise ValueError("Supply a captions df file path in config.toml")
+    
+    captions_df = pd.read_csv(captions_df_path)
+    
     client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
     st.title("A Moonlit Marine Tableau") 
@@ -166,41 +216,11 @@ def main():
             print(user_input)
             
             new_embedding = ast.literal_eval(user_input)
-
-        caption, _ = generate_seaweed_caption(client, captions_df, index, new_embedding)
-        # print(f"\nEmbedding: {new_embedding}, \nGenerated Caption:", caption)
-
-        caption_as_dict = string_to_dict(caption)
-        # print(list(caption_as_dict.keys()))
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.subheader("Fucus Coverage")
-            st.metric("Percentage", caption_as_dict['Fucus'])
-            st.progress(float(caption_as_dict['Fucus'].replace('%', ''))/100)
-
-        with col2:
-            st.subheader("Asco Coverage")
-            st.metric("Percentage", caption_as_dict['Asco'])
-            st.progress(float(caption_as_dict['Asco'].replace('%', ''))/100)
-
-        st.markdown("---")  # Horizontal line for separation
-        st.subheader(f"Observations: {caption_as_dict['Other']}")
-        st.markdown(f"""
-            <div style="
-                background-color: #f0f2f6;
-                padding: 15px;
-                border-radius: 8px;
-                border-left: 5px solid #007bff;  /* Blue accent line */
-            ">
-                <p style="font-size: 1.1em; font-style: italic; color: #333;">
-                    {caption_as_dict['Story']}
-                </p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        
+        if len(new_embedding) != 32:
+            st.error("The embedding should be a 32 dim feature.")
+        else:
+            process_embedding(client, captions_df, index, new_embedding)
 
 if __name__ == '__main__':
     main()
